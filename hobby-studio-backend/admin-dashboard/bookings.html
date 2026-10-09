@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bookings — Hobby Studio Admin</title>
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">Hobby <em>Studio</em></div>
+      <nav class="sidebar-nav">
+        <a href="dashboard.html"><span class="ico">📊</span> Dashboard</a>
+        <a href="gallery-manager.html"><span class="ico">🖼</span> Gallery</a>
+        <a href="bookings.html" class="active"><span class="ico">📅</span> Bookings</a>
+        <a href="reviews.html"><span class="ico">⭐</span> Reviews</a>
+        <a href="contacts.html"><span class="ico">✉️</span> Messages</a>
+        <a href="settings.html"><span class="ico">⚙️</span> Settings</a>
+      </nav>
+      <div class="sidebar-footer">
+        <span id="adminName">Admin</span>
+        <button type="button" onclick="logout()" class="logout-btn">Sign Out</button>
+      </div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <button class="menu-toggle" type="button" onclick="toggleSidebar()">☰</button>
+        <h2>Bookings</h2>
+        <div></div>
+      </header>
+      <div class="content">
+        <div class="action-bar">
+          <div class="filters" style="display:flex;gap:12px;align-items:center;">
+            <select id="statusFilter" onchange="loadBookings()">
+              <option value="all">All Status</option>
+              <option value="new">🟡 New</option>
+              <option value="contacted">🔵 Contacted</option>
+              <option value="confirmed">🟢 Confirmed</option>
+              <option value="completed">✅ Completed</option>
+              <option value="cancelled">🔴 Cancelled</option>
+            </select>
+            <button type="button" class="btn btn-primary" onclick="exportBookingsToCSV()" style="padding:6px 14px;font-size:0.8rem;cursor:pointer;">
+              📥 Export to CSV / Excel
+            </button>
+          </div>
+          <span id="bookingCount" style="color:var(--text-muted);font-size:0.85rem;"></span>
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Name</th><th>Phone</th><th>Service</th><th>Preferred Date</th><th>Booked On</th><th>Status</th><th>Actions</th></tr>
+              </thead>
+              <tbody id="bookingTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Edit Modal -->
+  <div class="modal-overlay" id="editModal">
+    <div class="modal">
+      <button class="modal-close" type="button" onclick="closeModal('editModal')">✕</button>
+      <h2>Edit Booking</h2>
+      <p class="sub" id="editSub">Update client & booking information</p>
+
+      <div class="form-group">
+        <label>Customer Name *</label>
+        <input type="text" id="editName" required>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;">
+        <div class="form-group">
+          <label>Phone Number *</label>
+          <input type="text" id="editPhone" required>
+        </div>
+        <div class="form-group">
+          <label>Email Address</label>
+          <input type="email" id="editEmail">
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;">
+        <div class="form-group">
+          <label>Service Type *</label>
+          <select id="editService">
+            <option value="Wedding Photography">Wedding Photography</option>
+            <option value="Pre-Wedding Shoot">Pre-Wedding Shoot</option>
+            <option value="Studio Portrait">Studio Portrait</option>
+            <option value="Couple Photography">Couple Photography</option>
+            <option value="Outdoor Photography">Outdoor Photography</option>
+            <option value="Birthday Photography">Birthday Photography</option>
+            <option value="Something else">Something else</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Preferred Date</label>
+          <input type="date" id="editDate">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Customer Message</label>
+        <textarea id="editMessage" rows="2"></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>Booking Status</label>
+        <select id="editStatus">
+          <option value="new">🟡 New</option>
+          <option value="contacted">🔵 Contacted</option>
+          <option value="confirmed">🟢 Confirmed</option>
+          <option value="completed">✅ Completed</option>
+          <option value="cancelled">🔴 Cancelled</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Internal Studio Notes</label>
+        <textarea id="editNotes" rows="2" placeholder="Add private notes about this booking..."></textarea>
+      </div>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;">
+        <button type="button" class="btn" onclick="closeModal('editModal')">Cancel</button>
+        <button type="button" class="btn btn-danger" onclick="deleteBooking()">Delete</button>
+        <button type="button" class="btn btn-primary" id="saveBookingBtn" onclick="saveBooking()">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="admin.js"></script>
+  <script>
+    let currentId = null;
+    let bookingsCache = {};
+
+    async function loadBookings() {
+      const tbody = document.getElementById('bookingTable');
+      const status = document.getElementById('statusFilter').value;
+      tbody.innerHTML = '<tr><td colspan="7" style="color:#7a7268;">Loading…</td></tr>';
+      try {
+        const res = await fetchWithAuth(`/api/bookings?status=${status}&limit=100`);
+        const data = await res.json();
+        const list = data.bookings || [];
+        document.getElementById('bookingCount').textContent = `${data.total !== undefined ? data.total : list.length} total`;
+
+        bookingsCache = {};
+        list.forEach(b => { bookingsCache[b._id] = b; });
+
+        if (!list.length) {
+          tbody.innerHTML = '<tr><td colspan="7" style="color:#7a7268;">No bookings found</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = list.map(b => `<tr>
+          <td><strong>${esc(b.name)}</strong></td>
+          <td>${esc(b.phone)}</td>
+          <td>${esc(b.service)}</td>
+          <td>${b.preferredDate ? new Date(b.preferredDate).toLocaleDateString('en-IN') : '—'}</td>
+          <td>${new Date(b.createdAt).toLocaleDateString('en-IN')}</td>
+          <td><span class="badge badge-${b.status}">${b.status}</span></td>
+          <td>
+            <button type="button" class="btn btn-sm btn-primary" onclick="openEdit('${b._id}')">✏️ Edit</button>
+          </td>
+        </tr>`).join('');
+      } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="7" style="color:#e86868;">Failed to load: ${esc(e.message)}</td></tr>`;
+      }
+    }
+
+    function populateBookingForm(b) {
+      document.getElementById('editSub').textContent = `Booking — ${b.name} (${new Date(b.createdAt).toLocaleDateString('en-IN')})`;
+      document.getElementById('editName').value = b.name || '';
+      document.getElementById('editPhone').value = b.phone || '';
+      document.getElementById('editEmail').value = b.email || '';
+      document.getElementById('editService').value = b.service || 'Wedding Photography';
+      document.getElementById('editDate').value = b.preferredDate ? new Date(b.preferredDate).toISOString().split('T')[0] : '';
+      document.getElementById('editMessage').value = b.message || '';
+      document.getElementById('editStatus').value = b.status || 'new';
+      document.getElementById('editNotes').value = b.notes || '';
+    }
+
+    async function openEdit(id) {
+      currentId = id;
+      // Instant populate from cache if available
+      if (bookingsCache[id]) {
+        populateBookingForm(bookingsCache[id]);
+      }
+      openModal('editModal');
+
+      // Refresh in background to get latest notes/status
+      try {
+        const res = await fetchWithAuth(`/api/bookings/${id}`);
+        const data = await res.json();
+        if (data.booking) {
+          bookingsCache[id] = data.booking;
+          populateBookingForm(data.booking);
+        }
+      } catch (e) {
+        console.warn('Background booking fetch notice:', e.message);
+      }
+    }
+    window.openEdit = openEdit;
+
+    async function saveBooking() {
+      if (!currentId) return;
+      const name = document.getElementById('editName').value.trim();
+      const phone = document.getElementById('editPhone').value.trim();
+      if (!name || !phone) {
+        alert('Customer Name and Phone Number are required.');
+        return;
+      }
+
+      const saveBtn = document.getElementById('saveBookingBtn');
+      const originalText = saveBtn.textContent;
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving…';
+
+      try {
+        const res = await fetchWithAuth(`/api/bookings/${currentId}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            name,
+            phone,
+            email: document.getElementById('editEmail').value.trim(),
+            service: document.getElementById('editService').value,
+            preferredDate: document.getElementById('editDate').value,
+            message: document.getElementById('editMessage').value.trim(),
+            status: document.getElementById('editStatus').value,
+            notes: document.getElementById('editNotes').value.trim(),
+          }),
+        });
+
+        const result = await res.json().catch(() => ({}));
+        saveBtn.disabled = false;
+        saveBtn.textContent = originalText;
+
+        if (!res.ok) throw new Error(result.error || 'Update failed');
+
+        closeModal('editModal');
+        loadBookings();
+      } catch (e) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = originalText;
+        alert('Update error: ' + e.message);
+      }
+    }
+    window.saveBooking = saveBooking;
+
+    async function deleteBooking() {
+      if (!currentId || !confirm('Delete this booking permanently?')) return;
+      try {
+        const res = await fetchWithAuth(`/api/bookings/${currentId}`, { method: 'DELETE' });
+        const result = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(result.error || 'Delete failed');
+
+        closeModal('editModal');
+        loadBookings();
+      } catch (e) {
+        alert('Delete error: ' + e.message);
+      }
+    }
+    function exportBookingsToCSV() {
+      const bookingsList = Object.values(bookingsCache);
+      if (!bookingsList.length) {
+        alert('No bookings available to export.');
+        return;
+      }
+
+      const headers = ['Name', 'Phone', 'Email', 'Service', 'Preferred Date', 'Booked On', 'Status', 'Message', 'Notes'];
+      const rows = bookingsList.map(b => [
+        `"${(b.name || '').replace(/"/g, '""')}"`,
+        `"${(b.phone || '').replace(/"/g, '""')}"`,
+        `"${(b.email || '').replace(/"/g, '""')}"`,
+        `"${(b.service || '').replace(/"/g, '""')}"`,
+        `"${b.preferredDate ? new Date(b.preferredDate).toLocaleDateString('en-IN') : ''}"`,
+        `"${new Date(b.createdAt).toLocaleDateString('en-IN')}"`,
+        `"${b.status || ''}"`,
+        `"${(b.message || '').replace(/"/g, '""')}"`,
+        `"${(b.notes || '').replace(/"/g, '""')}"`
+      ]);
+
+      const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', `hobby_studio_bookings_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+    window.exportBookingsToCSV = exportBookingsToCSV;
+
+    loadBookings();
+  </script>
+</body>
+</html>

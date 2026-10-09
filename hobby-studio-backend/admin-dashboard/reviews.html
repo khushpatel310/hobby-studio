@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reviews — Hobby Studio Admin</title>
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">Hobby <em>Studio</em></div>
+      <nav class="sidebar-nav">
+        <a href="dashboard.html"><span class="ico">📊</span> Dashboard</a>
+        <a href="gallery-manager.html"><span class="ico">🖼</span> Gallery</a>
+        <a href="bookings.html"><span class="ico">📅</span> Bookings</a>
+        <a href="reviews.html" class="active"><span class="ico">⭐</span> Reviews</a>
+        <a href="contacts.html"><span class="ico">✉️</span> Messages</a>
+        <a href="settings.html"><span class="ico">⚙️</span> Settings</a>
+      </nav>
+      <div class="sidebar-footer">
+        <span id="adminName">Admin</span>
+        <button type="button" onclick="logout()" class="logout-btn">Sign Out</button>
+      </div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <button class="menu-toggle" type="button" onclick="toggleSidebar()">☰</button>
+        <h2>Reviews</h2>
+        <div></div>
+      </header>
+      <div class="content">
+        <div class="action-bar">
+          <div class="filters">
+            <select id="statusFilter" onchange="loadReviews()">
+              <option value="all">📋 All</option>
+              <option value="pending">⏳ Pending (needs approval)</option>
+              <option value="approved">✅ Approved</option>
+              <option value="rejected">❌ Rejected</option>
+            </select>
+          </div>
+          <span id="reviewCount" style="color:var(--text-muted);font-size:0.85rem;"></span>
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Name</th><th>Stars</th><th>Service</th><th>Review</th><th>Date</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody id="reviewTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Edit Review Modal -->
+  <div class="modal-overlay" id="editReviewModal">
+    <div class="modal">
+      <button class="modal-close" type="button" onclick="closeModal('editReviewModal')">✕</button>
+      <h2>Edit Review</h2>
+      <p class="sub" id="editReviewSub">Modify review text, rating, or status</p>
+
+      <div class="form-group">
+        <label>Client Name *</label>
+        <input type="text" id="editReviewName" required>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;">
+        <div class="form-group">
+          <label>Star Rating *</label>
+          <select id="editReviewStars">
+            <option value="5">★★★★★ (5 Stars)</option>
+            <option value="4">★★★★☆ (4 Stars)</option>
+            <option value="3">★★★☆☆ (3 Stars)</option>
+            <option value="2">★★☆☆☆ (2 Stars)</option>
+            <option value="1">★☆☆☆☆ (1 Star)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Service Type *</label>
+          <select id="editReviewService">
+            <option value="Wedding Photography">Wedding Photography</option>
+            <option value="Pre-Wedding Shoot">Pre-Wedding Shoot</option>
+            <option value="Studio Portrait">Studio Portrait</option>
+            <option value="Couple Photography">Couple Photography</option>
+            <option value="Outdoor Photography">Outdoor Photography</option>
+            <option value="Birthday Photography">Birthday Photography</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Review Text *</label>
+        <textarea id="editReviewText" rows="3" required></textarea>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;">
+        <div class="form-group">
+          <label>Moderation Status</label>
+          <select id="editReviewStatus">
+            <option value="approved">✅ Approved</option>
+            <option value="pending">⏳ Pending</option>
+            <option value="rejected">❌ Rejected</option>
+          </select>
+        </div>
+        <div class="form-group" style="display:flex;align-items:center;padding-top:18px;">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0;font-size:0.88rem;">
+            <input type="checkbox" id="editReviewFeatured" style="width:auto;cursor:pointer;">
+            <span>⭐ Feature on Homepage</span>
+          </label>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;">
+        <button type="button" class="btn" onclick="closeModal('editReviewModal')">Cancel</button>
+        <button type="button" class="btn btn-danger" onclick="deleteFromModal()">Delete</button>
+        <button type="button" class="btn btn-primary" id="saveReviewBtn" onclick="saveReviewEdit()">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="admin.js"></script>
+  <script>
+    let currentReviewId = null;
+    let reviewsCache = {};
+
+    async function loadReviews() {
+      const tbody = document.getElementById('reviewTable');
+      const status = document.getElementById('statusFilter').value;
+      tbody.innerHTML = '<tr><td colspan="7" style="color:#7a7268;">Loading…</td></tr>';
+      try {
+        const res = await fetchWithAuth(`/api/reviews/all?status=${status}`);
+        const data = await res.json();
+        const list = data.reviews || [];
+        document.getElementById('reviewCount').textContent = `${data.total !== undefined ? data.total : list.length} total`;
+
+        reviewsCache = {};
+        list.forEach(r => { reviewsCache[r._id] = r; });
+
+        if (!list.length) { 
+          tbody.innerHTML = '<tr><td colspan="7" style="color:#7a7268;">No reviews found</td></tr>'; 
+          return; 
+        }
+
+        tbody.innerHTML = list.map(r => `<tr>
+          <td><strong>${esc(r.name)}</strong></td>
+          <td style="color:var(--gold-soft);font-size:1.1rem;">${'★'.repeat(r.stars || 5)}${'☆'.repeat(Math.max(0, 5 - (r.stars || 5)))}</td>
+          <td>${esc(r.service)}</td>
+          <td>${esc(r.text).slice(0, 75)}${r.text.length > 75 ? '…' : ''}</td>
+          <td>${new Date(r.createdAt).toLocaleDateString('en-IN')}</td>
+          <td><span class="badge badge-${r.status}">${r.status}</span></td>
+          <td style="display:flex;gap:4px;flex-wrap:wrap;">
+            <button type="button" class="btn btn-sm btn-primary" onclick="openEditReview('${r._id}')">✏️ Edit</button>
+            ${r.status !== 'approved' ? `<button type="button" class="btn btn-sm" onclick="updateReview('${r._id}','approved')" title="Approve">✓</button>` : ''}
+            ${r.status !== 'rejected' ? `<button type="button" class="btn btn-sm" onclick="updateReview('${r._id}','rejected')" title="Reject">✗</button>` : ''}
+            <button type="button" class="btn btn-sm" onclick="toggleFeatured('${r._id}', ${r.featured})" title="Toggle featured">${r.featured ? '★' : '☆'}</button>
+            <button type="button" class="btn btn-sm btn-danger" onclick="deleteReview('${r._id}')" title="Delete">🗑️</button>
+          </td>
+        </tr>`).join('');
+      } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="7" style="color:#e86868;">Failed to load reviews: ${esc(e.message)}</td></tr>`;
+      }
+    }
+
+    function populateReviewForm(r) {
+      document.getElementById('editReviewSub').textContent = `Review by ${r.name} (${new Date(r.createdAt).toLocaleDateString('en-IN')})`;
+      document.getElementById('editReviewName').value = r.name || '';
+      document.getElementById('editReviewStars').value = String(r.stars || 5);
+      document.getElementById('editReviewService').value = r.service || 'Wedding Photography';
+      document.getElementById('editReviewText').value = r.text || '';
+      document.getElementById('editReviewStatus').value = r.status || 'approved';
+      document.getElementById('editReviewFeatured').checked = Boolean(r.featured);
+    }
+
+    async function openEditReview(id) {
+      currentReviewId = id;
+      // Instant populate from cache if available
+      if (reviewsCache[id]) {
+        populateReviewForm(reviewsCache[id]);
+      }
+      openModal('editReviewModal');
+
+      // Refresh in background to get latest data
+      try {
+        const res = await fetchWithAuth(`/api/reviews/${id}`);
+        const data = await res.json();
+        if (data.review) {
+          reviewsCache[id] = data.review;
+          populateReviewForm(data.review);
+        }
+      } catch (e) {
+        console.warn('Background review fetch notice:', e.message);
+      }
+    }
+    window.openEditReview = openEditReview;
+
+    async function saveReviewEdit() {
+      if (!currentReviewId) return;
+      const name = document.getElementById('editReviewName').value.trim();
+      const text = document.getElementById('editReviewText').value.trim();
+      if (!name || !text) {
+        alert('Name and Review Text are required.');
+        return;
+      }
+
+      const saveBtn = document.getElementById('saveReviewBtn');
+      const originalText = saveBtn.textContent;
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving…';
+
+      try {
+        const res = await fetchWithAuth(`/api/reviews/${currentReviewId}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            name,
+            text,
+            stars: Number(document.getElementById('editReviewStars').value),
+            service: document.getElementById('editReviewService').value,
+            status: document.getElementById('editReviewStatus').value,
+            featured: document.getElementById('editReviewFeatured').checked,
+          }),
+        });
+
+        const result = await res.json().catch(() => ({}));
+        saveBtn.disabled = false;
+        saveBtn.textContent = originalText;
+
+        if (!res.ok) throw new Error(result.error || 'Failed to update review');
+
+        closeModal('editReviewModal');
+        loadReviews();
+      } catch (e) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = originalText;
+        alert('Update error: ' + e.message);
+      }
+    }
+    window.saveReviewEdit = saveReviewEdit;
+
+    async function deleteFromModal() {
+      if (!currentReviewId || !confirm('Delete this review permanently?')) return;
+      try {
+        const res = await fetchWithAuth(`/api/reviews/${currentReviewId}`, { method: 'DELETE' });
+        const result = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(result.error || 'Failed to delete review');
+
+        closeModal('editReviewModal');
+        loadReviews();
+      } catch (e) {
+        alert('Delete error: ' + e.message);
+      }
+    }
+    window.deleteFromModal = deleteFromModal;
+
+    async function updateReview(id, status) {
+      try {
+        const res = await fetchWithAuth(`/api/reviews/${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || 'Failed to update review');
+        }
+        loadReviews();
+      } catch (e) { alert(e.message); }
+    }
+    window.updateReview = updateReview;
+
+    async function toggleFeatured(id, current) {
+      try {
+        const res = await fetchWithAuth(`/api/reviews/${id}`, { method: 'PUT', body: JSON.stringify({ featured: !current }) });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || 'Failed to toggle featured status');
+        }
+        loadReviews();
+      } catch (e) { alert(e.message); }
+    }
+    window.toggleFeatured = toggleFeatured;
+
+    async function deleteReview(id) {
+      if (!confirm('Delete this review?')) return;
+      try {
+        const res = await fetchWithAuth(`/api/reviews/${id}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || 'Failed to delete review');
+        }
+        loadReviews();
+      } catch (e) { alert(e.message); }
+    }
+    window.deleteReview = deleteReview;
+
+    // Default to show all reviews
+    document.getElementById('statusFilter').value = 'all';
+    loadReviews();
+  </script>
+</body>
+</html>

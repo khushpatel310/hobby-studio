@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gallery — Hobby Studio Admin</title>
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">Hobby <em>Studio</em></div>
+      <nav class="sidebar-nav">
+        <a href="dashboard.html"><span class="ico">📊</span> Dashboard</a>
+        <a href="gallery-manager.html" class="active"><span class="ico">🖼</span> Gallery</a>
+        <a href="bookings.html"><span class="ico">📅</span> Bookings</a>
+        <a href="reviews.html"><span class="ico">⭐</span> Reviews</a>
+        <a href="contacts.html"><span class="ico">✉️</span> Messages</a>
+        <a href="settings.html"><span class="ico">⚙️</span> Settings</a>
+      </nav>
+      <div class="sidebar-footer">
+        <span id="adminName">Admin</span>
+        <button type="button" onclick="logout()" class="logout-btn">Sign Out</button>
+      </div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <button class="menu-toggle" type="button" onclick="toggleSidebar()">☰</button>
+        <h2>Gallery Manager</h2>
+        <div></div>
+      </header>
+      <div class="content">
+        <div class="action-bar">
+          <div class="filters">
+            <select id="catFilter" onchange="loadGallery()">
+              <option value="ALL">All Categories</option>
+              <option value="WEDDING">Wedding</option>
+              <option value="PRE-WED">Pre-Wedding</option>
+              <option value="STUDIO">Studio</option>
+              <option value="COUPLE">Couple</option>
+              <option value="OUTDOOR">Outdoor</option>
+              <option value="BIRTHDAY">Birthday</option>
+              <option value="MODEL">Model</option>
+              <option value="OTHER">Other</option>
+            </select>
+          </div>
+          <button type="button" class="btn btn-primary" onclick="openUploadModal()">+ Upload Image</button>
+        </div>
+        <div class="gallery-grid" id="galleryGrid"></div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Upload Modal -->
+  <div class="modal-overlay" id="uploadModal">
+    <div class="modal">
+      <button class="modal-close" type="button" onclick="closeModal('uploadModal')">✕</button>
+      <h2>Upload Image</h2>
+      <p class="sub">Add a new photo to the gallery</p>
+      <form id="uploadForm">
+        <div class="form-group">
+          <label>Image file (JPEG, PNG, WebP)</label>
+          <input type="file" name="image" accept="image/*" required>
+        </div>
+        <div class="form-group">
+          <label>Title (optional)</label>
+          <input type="text" name="title" placeholder="e.g. Meera & Rohan Wedding">
+        </div>
+        <div class="form-group">
+          <label>Category</label>
+          <select name="category" required>
+            <option value="WEDDING">Wedding</option>
+            <option value="PRE-WED">Pre-Wedding</option>
+            <option value="STUDIO">Studio</option>
+            <option value="COUPLE">Couple</option>
+            <option value="OUTDOOR">Outdoor</option>
+            <option value="BIRTHDAY">Birthday</option>
+            <option value="MODEL">Model</option>
+            <option value="OTHER">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <textarea name="description" rows="2" placeholder="Optional description..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>
+            <input type="checkbox" name="featured" value="true"> 
+            Feature this image (show first)
+          </label>
+        </div>
+        <button type="submit" class="btn btn-primary">Upload to Gallery</button>
+      </form>
+      <div id="uploadMsg" style="margin-top:12px;"></div>
+    </div>
+  </div>
+
+  <script src="admin.js"></script>
+  <script>
+    async function loadGallery() {
+      const grid = document.getElementById('galleryGrid');
+      grid.innerHTML = '<p style="color:#7a7268;">Loading gallery…</p>';
+      try {
+        const res = await fetchWithAuth('/api/gallery/all');
+        const data = await res.json();
+        const cat = document.getElementById('catFilter').value;
+        const images = data.images || [];
+        const filtered = cat === 'ALL' ? images : images.filter(i => i.category === cat);
+
+        if (!filtered.length) {
+          grid.innerHTML = '<p style="color:#7a7268;grid-column:1/-1;">No images in this category. Click "Upload Image" to add one!</p>';
+          return;
+        }
+
+        grid.innerHTML = filtered.map(img => `
+          <div class="gallery-item" onclick="deleteImage('${img._id}')" title="Click to delete">
+            <img src="${img.image}" alt="${esc(img.title)}" loading="lazy">
+            <div class="gallery-overlay">${esc(img.title || 'Untitled')} ${img.featured ? '★' : ''}</div>
+            <div class="gallery-badge">${img.category}</div>
+          </div>
+        `).join('');
+      } catch (e) {
+        grid.innerHTML = `<p style="color:#e86868;">Failed to load gallery: ${esc(e.message)}</p>`;
+      }
+    }
+
+    function openUploadModal() {
+      openModal('uploadModal');
+      document.getElementById('uploadForm').reset();
+      document.getElementById('uploadMsg').textContent = '';
+    }
+    window.openUploadModal = openUploadModal;
+
+    document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = document.getElementById('uploadMsg');
+      const formData = new FormData(e.target);
+
+      try {
+        const fullUrl = `${API_HOST}/api/gallery`;
+        const currentToken = localStorage.getItem('token') || token;
+        const res = await fetch(fullUrl, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${currentToken}` },
+          body: formData,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Upload failed');
+        msg.innerHTML = '<span style="color:#68e8a0;">✓ Image uploaded successfully!</span>';
+        setTimeout(() => { closeModal('uploadModal'); loadGallery(); }, 1000);
+      } catch (err) {
+        msg.innerHTML = `<span style="color:#e86868;">✗ ${err.message}</span>`;
+      }
+    });
+
+    async function deleteImage(id) {
+      if (!confirm('Delete this image from the gallery?')) return;
+      if (!confirm('Are you sure? This cannot be undone.')) return;
+      try {
+        const res = await fetchWithAuth(`/api/gallery/${id}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || 'Delete failed');
+        }
+        loadGallery();
+      } catch (e) {
+        alert('Failed to delete: ' + e.message);
+      }
+    }
+    window.deleteImage = deleteImage;
+
+    loadGallery();
+  </script>
+</body>
+</html>

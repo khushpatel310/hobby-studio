@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — Hobby Studio Admin</title>
+  <link rel="stylesheet" href="admin.css">
+  <style>
+    .quick-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 24px; }
+    .quick-actions a { flex: 1; min-width: 140px; padding: 18px; text-align: center; background: var(--bg2); border: 1px solid var(--line); border-radius: var(--radius); font-size: 0.9rem; transition: all 0.3s; }
+    .quick-actions a:hover { border-color: var(--gold-soft); background: var(--bg3); }
+    .quick-actions .ico { font-size: 1.5rem; display: block; margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">Hobby <em>Studio</em></div>
+      <nav class="sidebar-nav">
+        <a href="dashboard.html" class="active"><span class="ico">📊</span> Dashboard</a>
+        <a href="gallery-manager.html"><span class="ico">🖼</span> Gallery</a>
+        <a href="bookings.html"><span class="ico">📅</span> Bookings</a>
+        <a href="reviews.html"><span class="ico">⭐</span> Reviews</a>
+        <a href="contacts.html"><span class="ico">✉️</span> Messages</a>
+        <a href="settings.html"><span class="ico">⚙️</span> Settings</a>
+      </nav>
+      <div class="sidebar-footer">
+        <span id="adminName">Admin</span>
+        <button type="button" onclick="logout()" class="logout-btn">Sign Out</button>
+      </div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+        <h2>Dashboard</h2>
+        <div class="topbar-right">
+          <span id="timeDisplay"></span>
+        </div>
+      </header>
+      <div class="content">
+        <div class="stats-grid" id="statsGrid">
+          <div class="stat-card"><div class="stat-num" id="statBookings">—</div><div class="stat-label">New Bookings</div></div>
+          <div class="stat-card"><div class="stat-num" id="statReviews">—</div><div class="stat-label">Total Reviews</div></div>
+          <div class="stat-card"><div class="stat-num" id="statMessages">—</div><div class="stat-label">Unread Messages</div></div>
+          <div class="stat-card"><div class="stat-num" id="statGallery">—</div><div class="stat-label">Gallery Images</div></div>
+        </div>
+
+        <div class="quick-actions">
+          <a href="gallery-manager.html"><span class="ico">🖼</span> Upload Photos</a>
+          <a href="bookings.html"><span class="ico">📅</span> View Bookings</a>
+          <a href="reviews.html"><span class="ico">⭐</span> Moderate Reviews</a>
+          <a href="contacts.html"><span class="ico">✉️</span> Read Messages</a>
+        </div>
+
+        <div class="card" style="margin-top:28px;">
+          <h3>Recent Bookings</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Name</th><th>Service</th><th>Phone</th><th>Date</th><th>Status</th></tr></thead>
+              <tbody id="recentBookings"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:28px;">
+          <h3>Recent Reviews</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Name</th><th>Stars</th><th>Service</th><th>Preview</th><th>Status</th></tr></thead>
+              <tbody id="recentReviews"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script src="admin.js"></script>
+  <script>
+    async function loadDashStats() {
+      try {
+        const [bookRes, revRes, msgRes, galRes] = await Promise.all([
+          fetchWithAuth('/api/bookings?limit=5').then(r => r.json()).catch(() => ({ bookings: [], total: 0 })),
+          fetchWithAuth('/api/reviews/all?limit=5').then(r => r.json()).catch(() => ({ reviews: [], total: 0 })),
+          fetchWithAuth('/api/contacts?limit=5').then(r => r.json()).catch(() => ({ contacts: [], total: 0 })),
+          fetchWithAuth('/api/gallery/all').then(r => r.json()).catch(() => ({ images: [] })),
+        ]);
+
+        const books = bookRes;
+        const revs = revRes;
+        const msgs = msgRes;
+        const gals = galRes;
+
+        document.getElementById('statBookings').textContent = books.total !== undefined ? books.total : (books.bookings?.length || 0);
+        document.getElementById('statReviews').textContent = revs.total !== undefined ? revs.total : (revs.reviews?.length || 0);
+        document.getElementById('statMessages').textContent = msgs.total !== undefined ? msgs.total : (msgs.contacts?.length || 0);
+        document.getElementById('statGallery').textContent = gals.images?.length || 0;
+
+        renderRecentBookings(books.bookings || []);
+        renderRecentReviews(revs.reviews || []);
+      } catch (e) {
+        console.error('loadDashStats error:', e);
+        document.getElementById('statsGrid').innerHTML = `<p style="color:#e86868;grid-column:1/-1;">⚠️ Failed to load: ${esc(e.message)}</p>`;
+      }
+    }
+
+    function renderRecentBookings(list) {
+      const tbody = document.getElementById('recentBookings');
+      if (!list.length) { tbody.innerHTML = '<tr><td colspan="5" style="color:#7a7268;">No bookings yet</td></tr>'; return; }
+      tbody.innerHTML = list.map(b => `<tr>
+        <td>${esc(b.name)}</td><td>${esc(b.service)}</td><td>${esc(b.phone)}</td>
+        <td>${b.preferredDate ? new Date(b.preferredDate).toLocaleDateString() : '—'}</td>
+        <td><span class="badge badge-${b.status}">${b.status}</span></td>
+      </tr>`).join('');
+    }
+
+    function renderRecentReviews(list) {
+      const tbody = document.getElementById('recentReviews');
+      if (!list.length) { tbody.innerHTML = '<tr><td colspan="5" style="color:#7a7268;">No reviews yet</td></tr>'; return; }
+      tbody.innerHTML = list.slice(0, 5).map(r => `<tr>
+        <td>${esc(r.name)}</td><td style="color:var(--gold-soft);">${'★'.repeat(r.stars)}</td>
+        <td>${esc(r.service)}</td>
+        <td>${esc(r.text).slice(0, 50)}${r.text.length > 50 ? '…' : ''}</td>
+        <td><span class="badge badge-${r.status}">${r.status}</span></td>
+      </tr>`).join('');
+    }
+
+    loadDashStats();
+    setInterval(loadDashStats, 30000);
+
+    // ─── Live Clock ───
+    function updateClock() {
+      document.getElementById('timeDisplay').textContent = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    }
+    updateClock();
+    setInterval(updateClock, 1000);
+  </script>
+</body>
+</html>

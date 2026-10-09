@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings — Hobby Studio Admin</title>
+  <link rel="stylesheet" href="admin.css">
+  <style>
+    .settings-section { margin-bottom: 32px; }
+    .settings-section h3 { font-family: 'Courier New', monospace; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--gold-soft); margin-bottom: 16px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">Hobby <em>Studio</em></div>
+      <nav class="sidebar-nav">
+        <a href="dashboard.html"><span class="ico">📊</span> Dashboard</a>
+        <a href="gallery-manager.html"><span class="ico">🖼</span> Gallery</a>
+        <a href="bookings.html"><span class="ico">📅</span> Bookings</a>
+        <a href="reviews.html"><span class="ico">⭐</span> Reviews</a>
+        <a href="contacts.html"><span class="ico">✉️</span> Messages</a>
+        <a href="settings.html" class="active"><span class="ico">⚙️</span> Settings</a>
+      </nav>
+      <div class="sidebar-footer">
+        <span id="adminName">Admin</span>
+        <button type="button" onclick="logout()" class="logout-btn">Sign Out</button>
+      </div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+        <h2>Settings</h2>
+        <div></div>
+      </header>
+      <div class="content">
+        <div id="settingsMsg" style="padding:12px 16px;border-radius:8px;margin-bottom:20px;display:none;"></div>
+
+        <div class="card settings-section" style="max-width:700px;">
+          <h3>🏪 Studio Information</h3>
+          <form id="infoForm">
+            <div class="form-group"><label>Studio Name</label><input type="text" name="studio_name"></div>
+            <div class="form-group"><label>Tagline</label><input type="text" name="studio_tagline"></div>
+            <div class="form-group"><label>Email</label><input type="email" name="studio_email"></div>
+            <div class="form-group"><label>Phone</label><input type="text" name="studio_phone"></div>
+            <div class="form-group"><label>Address</label><input type="text" name="studio_address"></div>
+            <div class="form-group"><label>Business Hours</label><input type="text" name="business_hours"></div>
+            <button type="submit" class="btn btn-primary">Save Info</button>
+          </form>
+        </div>
+
+        <div class="card settings-section" style="max-width:700px;">
+          <h3>🌐 Social Links</h3>
+          <form id="socialForm">
+            <div class="form-group"><label>Instagram URL</label><input type="url" name="social_instagram" placeholder="https://instagram.com/..."></div>
+            <div class="form-group"><label>Facebook URL</label><input type="url" name="social_facebook" placeholder="https://facebook.com/..."></div>
+            <div class="form-group"><label>WhatsApp URL</label><input type="url" name="social_whatsapp" placeholder="https://wa.me/..."></div>
+            <button type="submit" class="btn btn-primary">Save Social Links</button>
+          </form>
+        </div>
+
+        <div class="card settings-section" style="max-width:700px;">
+          <h3>🔍 SEO (Search Engine)</h3>
+          <form id="seoForm">
+            <div class="form-group"><label>Meta Title (shows in Google search results)</label><input type="text" name="seo_title"></div>
+            <div class="form-group"><label>Meta Description</label><textarea name="seo_description" rows="2" placeholder="Describe your studio for search engines..."></textarea></div>
+            <button type="submit" class="btn btn-primary">Save SEO Settings</button>
+          </form>
+        </div>
+
+        <div class="card settings-section" style="max-width:700px;">
+          <h3>🔐 Change Password</h3>
+          <form id="passwordForm">
+            <div class="form-group"><label>Current Password</label><input type="password" name="currentPassword" required></div>
+            <div class="form-group"><label>New Password (minimum 6 characters)</label><input type="password" name="newPassword" required minlength="6"></div>
+            <button type="submit" class="btn btn-primary">Update Password</button>
+          </form>
+          <div id="pwdMsg" style="margin-top:12px;"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="admin.js"></script>
+  <script>
+    async function loadSettings() {
+      try {
+        const res = await fetchWithAuth('/api/settings');
+        const data = await res.json();
+        const s = data.settings || {};
+        Object.keys(s).forEach(key => {
+          const el = document.querySelector(`[name="${key}"]`);
+          if (el) el.value = s[key] || '';
+        });
+      } catch (e) { console.error('Settings load error:', e); }
+    }
+
+    function showMsg(text, type = 'success') {
+      const el = document.getElementById('settingsMsg');
+      el.textContent = text;
+      el.style.display = 'block';
+      el.style.background = type === 'success' ? 'rgba(104,232,160,0.1)' : 'rgba(232,104,104,0.1)';
+      el.style.color = type === 'success' ? 'var(--success)' : 'var(--danger)';
+      el.style.border = `1px solid ${type === 'success' ? 'var(--success)' : 'var(--danger)'}`;
+      setTimeout(() => el.style.display = 'none', 4000);
+    }
+
+    async function saveSettings(e) {
+      e.preventDefault();
+      const form = e.target;
+      const data = {};
+      new FormData(form).forEach((val, key) => { data[key] = val; });
+
+      try {
+        const res = await fetchWithAuth('/api/settings', {
+          method: 'PUT',
+          body: JSON.stringify(data),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || 'Failed to save settings');
+        showMsg('✓ Settings saved successfully!');
+      } catch (err) {
+        showMsg('✗ Failed to save: ' + err.message, 'error');
+      }
+    }
+
+    document.getElementById('infoForm').addEventListener('submit', saveSettings);
+    document.getElementById('socialForm').addEventListener('submit', saveSettings);
+    document.getElementById('seoForm').addEventListener('submit', saveSettings);
+
+    document.getElementById('passwordForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = document.getElementById('pwdMsg');
+      const data = { 
+        currentPassword: e.target.currentPassword.value, 
+        newPassword: e.target.newPassword.value 
+      };
+      try {
+        const res = await fetchWithAuth('/api/auth/password', { 
+          method: 'PUT', 
+          body: JSON.stringify(data), 
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || 'Failed to update password');
+        msg.innerHTML = '<span style="color:var(--success);">✓ Password updated successfully!</span>';
+        e.target.reset();
+        setTimeout(() => msg.innerHTML = '', 3000);
+      } catch (err) {
+        msg.innerHTML = `<span style="color:var(--danger);">✗ ${err.message}</span>`;
+      }
+    });
+
+    loadSettings();
+  </script>
+</body>
+</html>

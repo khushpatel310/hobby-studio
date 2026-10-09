@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Messages — Hobby Studio Admin</title>
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">Hobby <em>Studio</em></div>
+      <nav class="sidebar-nav">
+        <a href="dashboard.html"><span class="ico">📊</span> Dashboard</a>
+        <a href="gallery-manager.html"><span class="ico">🖼</span> Gallery</a>
+        <a href="bookings.html"><span class="ico">📅</span> Bookings</a>
+        <a href="reviews.html"><span class="ico">⭐</span> Reviews</a>
+        <a href="contacts.html" class="active"><span class="ico">✉️</span> Messages</a>
+        <a href="settings.html"><span class="ico">⚙️</span> Settings</a>
+      </nav>
+      <div class="sidebar-footer">
+        <span id="adminName">Admin</span>
+        <button type="button" onclick="logout()" class="logout-btn">Sign Out</button>
+      </div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <button class="menu-toggle" type="button" onclick="toggleSidebar()">☰</button>
+        <h2>Messages</h2>
+        <div></div>
+      </header>
+      <div class="content">
+        <div class="action-bar">
+          <div class="filters">
+            <select id="statusFilter" onchange="loadMessages()">
+              <option value="unread">📩 Unread</option>
+              <option value="all">📋 All</option>
+              <option value="read">👁️ Read</option>
+              <option value="replied">✅ Replied</option>
+            </select>
+          </div>
+          <span id="msgCount" style="color:var(--text-muted);font-size:0.85rem;"></span>
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Name</th><th>Email</th><th>Subject</th><th>Message</th><th>Date</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody id="msgTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Message Detail Modal -->
+  <div class="modal-overlay" id="msgModal">
+    <div class="modal">
+      <button class="modal-close" type="button" onclick="closeModal('msgModal')">✕</button>
+      <h2 id="msgSender">Message Details</h2>
+      <p class="sub" id="msgDate"></p>
+
+      <div style="font-size:0.9rem;color:var(--text-dim);margin-bottom:16px;padding:14px;background:var(--bg3);border-radius:8px;line-height:1.6;">
+        <div style="margin-bottom:6px;"><strong>From:</strong> <span id="msgFrom"></span></div>
+        <div style="margin-bottom:6px;"><strong>Email:</strong> <span id="msgEmail"></span></div>
+        <div style="margin-bottom:6px;"><strong>Phone:</strong> <span id="msgPhone"></span></div>
+        <div style="margin-bottom:10px;"><strong>Subject:</strong> <span id="msgSubject"></span></div>
+        <div style="border-top:1px solid var(--line);padding-top:10px;">
+          <strong>Message:</strong>
+          <p id="msgBody" style="margin-top:6px;white-space:pre-wrap;color:var(--text);"></p>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Status</label>
+        <select id="msgStatus">
+          <option value="unread">📩 Unread</option>
+          <option value="read">👁️ Read</option>
+          <option value="replied">✅ Replied</option>
+        </select>
+      </div>
+
+      <div style="display:flex;gap:10px;justify-content:space-between;flex-wrap:wrap;margin-top:16px;">
+        <a id="msgReplyBtn" href="#" class="btn btn-primary">✉️ Reply via Email</a>
+        <div style="display:flex;gap:8px;">
+          <button type="button" class="btn" onclick="closeModal('msgModal')">Close</button>
+          <button type="button" class="btn btn-danger" onclick="deleteFromModal()">Delete</button>
+          <button type="button" class="btn btn-primary" onclick="saveMsgStatus()">Save Status</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="admin.js"></script>
+  <script>
+    let currentMsgId = null;
+    let messagesCache = [];
+
+    async function loadMessages() {
+      const tbody = document.getElementById('msgTable');
+      const status = document.getElementById('statusFilter').value;
+      tbody.innerHTML = '<tr><td colspan="7" style="color:#7a7268;">Loading…</td></tr>';
+      try {
+        const res = await fetchWithAuth(`/api/contacts?status=${status}`);
+        const data = await res.json();
+        const list = data.contacts || [];
+        messagesCache = list;
+        document.getElementById('msgCount').textContent = `${data.total !== undefined ? data.total : list.length} total`;
+
+        if (!list.length) { 
+          tbody.innerHTML = '<tr><td colspan="7" style="color:#7a7268;">No messages</td></tr>'; 
+          return; 
+        }
+
+        tbody.innerHTML = list.map(c => `<tr>
+          <td><strong>${esc(c.name)}</strong></td>
+          <td><a href="mailto:${esc(c.email)}" style="color:var(--gold-soft);">${esc(c.email)}</a></td>
+          <td>${esc(c.subject || '—')}</td>
+          <td>${esc(c.message).slice(0, 60)}${c.message.length > 60 ? '…' : ''}</td>
+          <td>${new Date(c.createdAt).toLocaleDateString('en-IN')}</td>
+          <td><span class="badge badge-${c.status}">${c.status}</span></td>
+          <td style="display:flex;gap:4px;">
+            <button type="button" class="btn btn-sm btn-primary" onclick="openMsg('${c._id}')" title="View Message">👁️ View</button>
+            <button type="button" class="btn btn-sm btn-danger" onclick="deleteMsg('${c._id}')" title="Delete">🗑️</button>
+          </td>
+        </tr>`).join('');
+      } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="7" style="color:#e86868;">Failed to load messages: ${esc(e.message)}</td></tr>`;
+      }
+    }
+
+    function openMsg(id) {
+      currentMsgId = id;
+      const c = messagesCache.find(m => m._id === id);
+      if (!c) return;
+
+      document.getElementById('msgSender').textContent = `Message from ${c.name}`;
+      document.getElementById('msgDate').textContent = new Date(c.createdAt).toLocaleString('en-IN');
+      document.getElementById('msgFrom').textContent = c.name;
+      document.getElementById('msgEmail').innerHTML = `<a href="mailto:${esc(c.email)}" style="color:var(--gold-soft);">${esc(c.email)}</a>`;
+      document.getElementById('msgPhone').textContent = c.phone || '—';
+      document.getElementById('msgSubject').textContent = c.subject || '—';
+      document.getElementById('msgBody').textContent = c.message || '';
+      document.getElementById('msgStatus').value = c.status || 'read';
+
+      document.getElementById('msgReplyBtn').href = `mailto:${encodeURIComponent(c.email)}?subject=Re: ${encodeURIComponent(c.subject || 'Inquiry at Hobby Studio')}`;
+
+      // Auto-mark read if unread
+      if (c.status === 'unread') {
+        fetchWithAuth(`/api/contacts/${id}`, { method: 'PUT', body: JSON.stringify({ status: 'read' }) });
+        c.status = 'read';
+      }
+
+      openModal('msgModal');
+    }
+    window.openMsg = openMsg;
+
+    async function saveMsgStatus() {
+      if (!currentMsgId) return;
+      try {
+        const status = document.getElementById('msgStatus').value;
+        const res = await fetchWithAuth(`/api/contacts/${currentMsgId}`, { method: 'PUT', body: JSON.stringify({ status }) });
+        if (!res.ok) throw new Error('Failed to update message status');
+        closeModal('msgModal');
+        loadMessages();
+      } catch (e) {
+        alert(e.message);
+      }
+    }
+    window.saveMsgStatus = saveMsgStatus;
+
+    async function deleteFromModal() {
+      if (!currentMsgId || !confirm('Delete this message?')) return;
+      try {
+        const res = await fetchWithAuth(`/api/contacts/${currentMsgId}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Failed to delete message');
+        closeModal('msgModal');
+        loadMessages();
+      } catch (e) {
+        alert(e.message);
+      }
+    }
+    window.deleteFromModal = deleteFromModal;
+
+    async function deleteMsg(id) {
+      if (!confirm('Delete this message?')) return;
+      try {
+        const res = await fetchWithAuth(`/api/contacts/${id}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || 'Failed to delete message');
+        }
+        loadMessages();
+      } catch (e) { alert(e.message); }
+    }
+    window.deleteMsg = deleteMsg;
+
+    loadMessages();
+    setInterval(loadMessages, 20000);
+  </script>
+</body>
+</html>
